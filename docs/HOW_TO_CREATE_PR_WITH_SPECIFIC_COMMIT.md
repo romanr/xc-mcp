@@ -24,8 +24,8 @@ If you want to clean up the current branch and align it with main:
 # Reset current branch to main
 git reset --hard origin/main
 
-# Force push to update remote branch
-git push --force origin copilot/create-pull-request-with-commit
+# Force push to update remote branch (use --force-with-lease for safety)
+git push --force-with-lease origin copilot/create-pull-request-with-commit
 ```
 
 This will make your branch identical to main (just contains the fix commit).
@@ -69,8 +69,8 @@ git rebase -i <base-commit-sha>
 # - Keep (pick) the commit you want
 # - Drop or remove lines for commits you don't want
 
-# Force push (if branch is already pushed)
-git push --force origin your-branch-name
+# Force push (if branch is already pushed) - use --force-with-lease for safety
+git push --force-with-lease origin your-branch-name
 ```
 
 ### Method 2: Create New Branch with Cherry-pick
@@ -101,8 +101,8 @@ git add <files-for-specific-commit>
 # Commit with same message as original
 git commit -m "Your commit message"
 
-# Force push if needed
-git push --force origin your-branch-name
+# Force push if needed (use --force-with-lease for safety)
+git push --force-with-lease origin your-branch-name
 ```
 
 ## Scenario 4: Squash Multiple Commits into One for PR
@@ -118,8 +118,8 @@ git rebase -i <base-commit-sha>
 
 # Edit the commit message in the next screen
 
-# Force push
-git push --force origin your-branch-name
+# Force push (use --force-with-lease for safety)
+git push --force-with-lease origin your-branch-name
 ```
 
 ## Best Practices
