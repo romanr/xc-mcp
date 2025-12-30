@@ -738,6 +738,15 @@ npm run format         # Prettier code formatting
 
 ---
 
+## Documentation
+
+Additional guides and documentation available in the [`docs/`](./docs/) directory:
+- **[Creating PRs with Specific Commits](./docs/HOW_TO_CREATE_PR_WITH_SPECIFIC_COMMIT.md)** - Comprehensive guide for Git workflows and PR creation strategies
+
+For development guidelines, see [CLAUDE.md](./CLAUDE.md).
+
+---
+
 ## Contributing
 
 Contributions welcome! Please ensure:
