@@ -220,6 +220,7 @@ export async function xcodebuildBuildTool(args: any) {
       guidance: summary.success
         ? [
             `Build completed successfully in ${duration}ms`,
+            ...(summary.warningCount > 0 ? [`⚠️ ${summary.warningCount} warning(s) detected`] : []),
             ...(usedSmartDestination ? [`Used smart simulator: ${finalConfig.destination}`] : []),
             ...(hasPreferredConfig ? [`Applied cached project preferences`] : []),
             `Use 'xcodebuild-get-details' with buildId '${cacheId}' for full logs`,
