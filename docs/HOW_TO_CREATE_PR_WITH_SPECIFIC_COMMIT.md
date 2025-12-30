@@ -69,7 +69,7 @@ git rebase -i <base-commit-sha>
 # - Keep (pick) the commit you want
 # - Drop or remove lines for commits you don't want
 
-# Force push (if branch is already pushed) - use --force-with-lease for safety
+# Force push - use --force-with-lease to safely overwrite without losing others' work
 git push --force-with-lease origin your-branch-name
 ```
 
@@ -136,7 +136,7 @@ git push --force-with-lease origin your-branch-name
    git diff <base-branch>..HEAD
    ```
 
-3. **Use `--force-with-lease` instead of `--force`** for safer force pushes:
+3. **Use `--force-with-lease` instead of `--force`** for safer force pushes (prevents overwriting changes made by others):
    ```bash
    git push --force-with-lease origin your-branch-name
    ```
@@ -206,5 +206,5 @@ Based on your current situation where commit `58cfa96` is already on `main`:
 ## Additional Resources
 
 - [Git Cherry-pick Documentation](https://git-scm.com/docs/git-cherry-pick)
-- [Git Rebase Interactive Documentation](https://git-scm.com/docs/git-rebase#_interactive_mode)
+- [Git Rebase Documentation](https://git-scm.com/docs/git-rebase)
 - [GitHub Pull Request Documentation](https://docs.github.com/en/pull-requests)

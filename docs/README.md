@@ -5,7 +5,7 @@ This directory contains additional documentation for the XC-MCP project.
 ## Available Guides
 
 ### Git & Version Control
-- **[How to Create a Pull Request with Only a Specific Commit](./HOW_TO_CREATE_PR_WITH_SPECIFIC_COMMIT.md)** - Comprehensive guide covering various scenarios for creating PRs with specific commits, including cherry-picking, interactive rebase, and commit management strategies.
+- **[How to Create a Pull Request with Only a Specific Commit](./HOW_TO_CREATE_PR_WITH_SPECIFIC_COMMIT.md)** - Step-by-step guide for creating PRs with specific commits using various Git strategies.
 
 ## Project Documentation
 
