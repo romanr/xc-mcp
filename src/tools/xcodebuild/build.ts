@@ -196,11 +196,17 @@ export async function xcodebuildBuildTool(args: any) {
       }
     }
 
+    // Destructure errors/warnings from summary for top-level placement
+    const { errors, warnings, ...summaryRest } = summary;
+
     const responseData = {
       buildId: cacheId,
       success: summary.success,
+      // Errors and warnings at top level for immediate visibility
+      errors: errors.length > 0 ? errors : undefined,
+      warnings: warnings.length > 0 ? warnings : undefined,
       summary: {
-        ...summary,
+        ...summaryRest,
         scheme: finalConfig.scheme,
         configuration: finalConfig.configuration,
         destination: finalConfig.destination,
