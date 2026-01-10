@@ -71,17 +71,25 @@ interface BuildToolArgs {
  * @returns Tool result with build summary and buildId for progressive disclosure
  */
 export async function xcodebuildBuildTool(args: any) {
+  const rawArgs = args as BuildToolArgs;
   const {
     projectPath,
     scheme,
-    configuration = 'Debug',
-    destination,
-    sdk,
-    derivedDataPath,
+    configuration: configurationArg,
+    destination: destinationArg,
+    sdk: sdkArg,
+    derivedDataPath: derivedDataPathArg,
     autoInstall = false,
     simulatorUdid,
     bootSimulator = true,
-  } = args as BuildToolArgs;
+  } = rawArgs;
+
+  const provided = {
+    configuration: Object.prototype.hasOwnProperty.call(rawArgs, 'configuration'),
+    destination: Object.prototype.hasOwnProperty.call(rawArgs, 'destination'),
+    sdk: Object.prototype.hasOwnProperty.call(rawArgs, 'sdk'),
+    derivedDataPath: Object.prototype.hasOwnProperty.call(rawArgs, 'derivedDataPath'),
+  };
 
   try {
     // Validate inputs
@@ -90,16 +98,23 @@ export async function xcodebuildBuildTool(args: any) {
 
     // Get smart defaults from cache
     const preferredConfig = await projectCache.getPreferredBuildConfig(projectPath);
-    const smartDestination =
-      destination || (await getSmartDestination(preferredConfig, projectPath));
+    const resolvedSdk = sdkArg ?? preferredConfig?.sdk;
+    const resolvedConfiguration = configurationArg ?? preferredConfig?.configuration ?? 'Debug';
+    const resolvedDestination = await resolveDestination({
+      explicitDestination: destinationArg,
+      preferredConfig,
+      projectPath,
+      sdk: resolvedSdk,
+    });
+    const resolvedDerivedDataPath = derivedDataPathArg ?? preferredConfig?.derivedDataPath;
 
     // Build final configuration
     const finalConfig: BuildConfig = {
       scheme,
-      configuration: configuration || preferredConfig?.configuration || 'Debug',
-      destination: smartDestination,
-      sdk: sdk || preferredConfig?.sdk,
-      derivedDataPath: derivedDataPath || preferredConfig?.derivedDataPath,
+      configuration: resolvedConfiguration,
+      destination: resolvedDestination,
+      sdk: resolvedSdk,
+      derivedDataPath: resolvedDerivedDataPath,
     };
 
     // Build command
@@ -191,16 +206,16 @@ export async function xcodebuildBuildTool(args: any) {
         success: buildSuccess,
         errorCount: summary.errorCount,
         warningCount: summary.warningCount,
-        smartDestinationUsed: !destination && smartDestination !== destination,
-        smartConfigurationUsed: !args.configuration && finalConfig.configuration !== 'Debug',
+        smartDestinationUsed: !provided.destination && !!finalConfig.destination,
+        smartConfigurationUsed: !provided.configuration && finalConfig.configuration !== 'Debug',
         timedOut: result.timedOut,
         fatalMatch: result.fatalMatch,
       },
     });
 
     // Create concise response with smart defaults transparency
-    const usedSmartDestination = !destination && smartDestination;
-    const usedSmartConfiguration = !configuration && finalConfig.configuration !== 'Debug';
+    const usedSmartDestination = !provided.destination && !!finalConfig.destination;
+    const usedSmartConfiguration = !provided.configuration && finalConfig.configuration !== 'Debug';
     const hasPreferredConfig = !!preferredConfig;
 
     // Handle auto-install if enabled and build succeeded
@@ -303,27 +318,133 @@ export async function xcodebuildBuildTool(args: any) {
   }
 }
 
-async function getSmartDestination(
-  preferredConfig: BuildConfig | null,
-  projectPath: string
-): Promise<string | undefined> {
-  // If preferred config has a destination, use it
-  if (preferredConfig?.destination) {
-    return preferredConfig.destination;
+async function resolveDestination(params: {
+  explicitDestination?: string;
+  preferredConfig: BuildConfig | null;
+  projectPath: string;
+  sdk?: string;
+}): Promise<string | undefined> {
+  const { explicitDestination, preferredConfig, projectPath, sdk } = params;
+
+  // Caller wins: never override an explicit destination
+  if (explicitDestination && explicitDestination.trim().length > 0) {
+    return explicitDestination;
   }
 
-  // Try to get a smart simulator destination with project-specific preference
+  const sdkInfo = deriveSdkInfo(sdk);
+
+  // Prefer cached destination only if it matches the requested platform (when known)
+  if (preferredConfig?.destination) {
+    const preferredPlatform = derivePlatformFromDestination(preferredConfig.destination);
+    if (platformsCompatible(sdkInfo.platform, preferredPlatform)) {
+      return preferredConfig.destination;
+    }
+  }
+
+  // macOS builds should not inherit simulator destinations
+  if (sdkInfo.platform === 'macos') {
+    return undefined;
+  }
+
+  // Physical device SDKs (non-simulator) should avoid simulator defaults
+  if (sdkInfo.platform && !sdkInfo.isSimulator && sdkInfo.platform !== 'macos') {
+    return undefined;
+  }
+
+  // Fall back to a smart simulator suggestion filtered by platform (if known)
+  return await getSmartSimulatorDestination(projectPath, sdkInfo.platform);
+}
+
+async function getSmartSimulatorDestination(
+  projectPath: string,
+  platformHint?: string
+): Promise<string | undefined> {
   try {
+    // First, try project-preferred simulator if it matches the desired platform
     const preferredSim = await simulatorCache.getPreferredSimulator(projectPath);
     if (preferredSim) {
-      return `platform=iOS Simulator,id=${preferredSim.udid}`;
+      const runtime = await findRuntimeForUdid(preferredSim.udid);
+      if (!platformHint || (runtime && runtimeMatchesPlatform(runtime, platformHint))) {
+        return buildDestinationFromUdid(preferredSim.udid, runtime);
+      }
+    }
+
+    // Otherwise pick the first available simulator matching the platform hint (if provided)
+    const list = await simulatorCache.getSimulatorList();
+    for (const [runtime, devices] of Object.entries(list.devices)) {
+      if (platformHint && !runtimeMatchesPlatform(runtime, platformHint)) {
+        continue;
+      }
+      const available = devices.find(device => device.isAvailable);
+      if (available) {
+        return buildDestinationFromUdid(available.udid, runtime);
+      }
     }
   } catch {
-    // Fallback to no destination if simulator cache fails
+    // If simulator cache fails, let xcodebuild decide
+    return undefined;
   }
 
-  // Return undefined to let xcodebuild use its own defaults
   return undefined;
+}
+
+function deriveSdkInfo(sdk?: string): { platform?: string; isSimulator: boolean } {
+  if (!sdk) return { platform: undefined, isSimulator: false };
+  const lower = sdk.toLowerCase();
+  return {
+    platform: derivePlatformFromToken(lower),
+    isSimulator: lower.includes('simulator'),
+  };
+}
+
+function derivePlatformFromDestination(destination?: string): string | undefined {
+  if (!destination) return undefined;
+  const match = destination.match(/platform=([^,]+)/i);
+  if (!match) return undefined;
+  return derivePlatformFromToken(match[1]);
+}
+
+function derivePlatformFromToken(token?: string): string | undefined {
+  if (!token) return undefined;
+  const lower = token.toLowerCase();
+  if (lower.includes('mac')) return 'macos';
+  if (lower.includes('iphone') || lower.includes('ios')) return 'ios';
+  if (lower.includes('tvos') || lower.includes('appletv')) return 'tvos';
+  if (lower.includes('watch')) return 'watchos';
+  if (lower.includes('vision')) return 'visionos';
+  return lower.replace(/[^a-z]/g, '') || undefined;
+}
+
+function platformsCompatible(sdkPlatform?: string, destinationPlatform?: string): boolean {
+  if (!sdkPlatform || !destinationPlatform) return true;
+  return sdkPlatform === destinationPlatform;
+}
+
+async function findRuntimeForUdid(udid: string): Promise<string | undefined> {
+  const list = await simulatorCache.getSimulatorList();
+  for (const [runtime, devices] of Object.entries(list.devices)) {
+    if (devices.some(device => device.udid === udid)) {
+      return runtime;
+    }
+  }
+  return undefined;
+}
+
+function buildDestinationFromUdid(udid: string, runtime?: string): string {
+  const platformLabel = runtime ? platformLabelFromRuntime(runtime) : undefined;
+  return platformLabel ? `platform=${platformLabel},id=${udid}` : `id=${udid}`;
+}
+
+function platformLabelFromRuntime(runtime: string): string | undefined {
+  const lastSegment = runtime.split('.').pop() || runtime;
+  const baseName = lastSegment.split('-')[0];
+  if (!baseName) return undefined;
+  // Preserve existing casing to avoid hardcoded platform lists
+  return `${baseName} Simulator`;
+}
+
+function runtimeMatchesPlatform(runtime: string, platform: string): boolean {
+  return runtime.toLowerCase().includes(platform.toLowerCase());
 }
 
 interface AutoInstallArgs {
